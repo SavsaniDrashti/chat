@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Dashboard</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        .container { display: flex; width: 100%; height: 100vh; }
+        .sidebar { width: 30%; background: #f2f2f2; padding: 10px; }
+        .chat { width: 70%; border-left: 2px solid #ddd; padding: 10px; display: none; }
+        .room { display: flex; align-items: center; padding: 10px; border-bottom: 1px solid #ddd; cursor: pointer; }
+        .room img { width: 40px; height: 40px; border-radius: 50%; margin-right: 10px; }
+        .chat-box { height: 300px; overflow-y: scroll; border: 1px solid #ccc; padding: 5px; margin-bottom: 10px; }
+        .message { padding: 5px; border-radius: 5px; margin-bottom: 5px; }
+        .my-message { background: #DCF8C6; text-align: right; }
+        .other-message { background: #EAEAEA; }
+        .btn { margin: 5px; padding: 10px; cursor: pointer; background: #28a745; color: white; border: none; }
+        .popup { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 20px; box-shadow: 0px 0px 10px gray; }
+        .popup input, .popup label { display: block; margin: 5px 0; padding: 8px; width: 90%; }
+        .popup button { margin-top: 10px; }
+        #previewImg { width: 60px; height: 60px; border-radius: 50%; display: none; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="sidebar">
+        <h2>Rooms</h2>
+        <button class="btn" id="openCreateRoom">Create Room</button>
+        <input type="text" id="joinRoomId" placeholder="Enter Room ID">
+        <button class="btn" id="joinRoomBtn">Join Room</button>
+        <div id="roomList"></div>
+    </div>
+
+    <div class="chat" id="chatArea">
+        <h2 id="roomTitle"></h2>
+        <div class="chat-box" id="chatBox"></div>
+        <input type="text" id="message" placeholder="Type a message...">
+        <button class="btn" id="sendMessage">Send</button>
+    </div>
+</div>
+
+<!-- Room Creation Popup -->
+<div class="popup" id="createRoomPopup">
+    <h3>Create Room</h3>
+    <input type="text" id="roomNo" placeholder="Enter Room No">
+    <input type="text" id="roomName" placeholder="Enter Room Name">
+    <label>Upload Profile Photo:</label>
+    <input type="file" id="profilePhoto" accept="image/*">
+    <img id="previewImg">
+    <button class="btn" id="createRoom">Create</button>
+    <button class="btn" id="closePopup" style="background: red;">Close</button>
+</div>
+
+<script>
+    const API_URL = "https://your-api-url.com"; // Replace with your backend URL
+    let currentRoom = "";
+
+    $(document).ready(function () {
+        loadRooms();
+
+        $("#openCreateRoom").click(function () {
+            $("#createRoomPopup").show();
+        });
+
+        $("#closePopup").click(function () {
+            $("#createRoomPopup").hide();
+        });
+
+        $("#profilePhoto").change(function (event) {
+            let file = event.target.files[0];
+            if (file) {
+                let reader = new FileReader();
+                reader.onload = function (e) {
+                    $("#previewImg").attr("src", e.target.result).show();
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        $("#createRoom").click(function () {
+            let roomNo = $("#roomNo").val().trim();
+            let roomName = $("#roomName").val().trim();
+            let profileFile = $("#profilePhoto")[0].files[0];
+
+            if (roomNo && roomName && profileFile) {
+                let formData = new FormData();
+                formData.append("roomNo", roomNo);
+                formData.append("roomName", roomName);
+                formData.append("profilePhoto", profileFile);
+
+                $.ajax({
+                    url: `${API_URL}/create-room`,
+                    type: "POST",
+                    processData: false,
+                    contentType: false,
+                    data: formData,
+                    success: function (response) {
+                        alert("Room Created!");
+                        $("#createRoomPopup").hide();
+                        $("#roomNo, #roomName").val("");
+                        $("#profilePhoto").val("");
+                        $("#previewImg").hide();
+                        loadRooms();
+                    },
+                    error: function () {
+                        alert("Error creating room. Try again!");
+                    }
+                });
+            } else {
+                alert("Please fill all fields and upload a profile photo.");
+            }
+        });
+
+        $("#joinRoomBtn").click(function () {
+            let roomId = $("#joinRoomId").val().trim();
+            if (roomId) {
+                joinRoom(roomId);
+            } else {
+                alert("Enter a valid Room ID!");
+            }
+        });
+
+        function joinRoom(roomNo) {
+            currentRoom = roomNo;
+            $("#roomTitle").text(`Room ID: ${roomNo}`);
+            $("#chatArea").show();
+            loadMessages();
+        }
+
+        function loadRooms() {
+            $.ajax({
+                url: `${API_URL}/rooms`,
+                type: "GET",
+                success: function (rooms) {
+                    let roomHtml = "";
+                    rooms.forEach(room => {
+                        roomHtml += `<div class="room" onclick="joinRoom('${room.roomNo}')">
+                            <img src="${API_URL}/uploads/${room.profilePhoto}" alt="Profile">
+                            <span>${room.roomName} (No: ${room.roomNo})</span>
+                        </div>`;
+                    });
+                    $("#roomList").html(roomHtml);
+                }
+            });
+        }
+
+        function loadMessages() {
+            if (!currentRoom) return;
+            $.ajax({
+                url: `${API_URL}/messages?room=${currentRoom}`,
+                type: "GET",
+                success: function (messages) {
+                    let chatHtml = "";
+                    messages.forEach(msg => {
+                        let classType = msg.sender === "Me" ? "my-message" : "other-message";
+                        chatHtml += `<div class="message ${classType}">${msg.text}</div>`;
+                    });
+                    $("#chatBox").html(chatHtml);
+                }
+            });
+        }
+
+        $("#sendMessage").click(function () {
+            let message = $("#message").val().trim();
+            if (message && currentRoom) {
+                $.ajax({
+                    url: `${API_URL}/send-message`,
+                    type: "POST",
+                    contentType: "application/json",
+                    data: JSON.stringify({ room: currentRoom, sender: "Me", text: message }),
+                    success: function () {
+                        $("#message").val("");
+                        loadMessages();
+                    }
+                });
+            }
+        });
+    });
+</script>
+
+</body>
+</html>
